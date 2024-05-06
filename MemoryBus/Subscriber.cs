@@ -1,19 +1,23 @@
 ﻿
 namespace MemBus
 {
-    public abstract class Observer
+    public abstract class Subscriber
     {
         public Guid Id { get; private set; } = Guid.NewGuid();
     }
 
-    public class Observer<TNotification> : Observer, IDisposable
-        where TNotification : Notify
+    /// <summary>
+    /// Notification subscriber.
+    /// </summary>
+    /// <typeparam name="TNotification">The type of the notification.</typeparam>
+    public class Subscriber<TNotification> : Subscriber, IDisposable
+        where TNotification : Notification
     {
         internal Action<TNotification> Handler;
 
         private bool disposedValue;
 
-        public Observer(Action<TNotification> callback)
+        public Subscriber(Action<TNotification> callback)
         {
             Handler = callback;
         }
@@ -34,14 +38,19 @@ namespace MemBus
         }
     }
 
-    public class Observer<TRequest, TResponse> : Observer, IDisposable
+    /// <summary>
+    /// Request subscriber. 
+    /// </summary>
+    /// <typeparam name="TRequest">The type of the Request.</typeparam>
+    /// <typeparam name="TResponse">The type of the Response.</typeparam>
+    public class Subscriber<TRequest, TResponse> : Subscriber, IDisposable
         where TRequest : Request<TResponse>
     {
         internal Func<TRequest, TResponse> Handler;
 
         private bool disposedValue;
 
-        public Observer(Func<TRequest, TResponse> callback)
+        public Subscriber(Func<TRequest, TResponse> callback)
         {
             Handler = callback;
         }

@@ -2,26 +2,26 @@
 {
     public interface IMemoryBus
     {
-        public void Publish<TNofication>(TNofication notification)
-            where TNofication : Notify;
+        public void Notify<TNofication>(TNofication notification)
+            where TNofication : Notification;
 
-        public void Publish<TRequest, TResponse>(TRequest request)
+        public void Request<TRequest, TResponse>(TRequest request)
             where TRequest : Request<TResponse>;
 
-        public void Subscribe<TNofication>(Observer<TNofication> subscriber)
-            where TNofication : Notify;
+        public void Subscribe<TNofication>(Subscriber<TNofication> subscriber)
+            where TNofication : Notification;
 
-        public void Subscribe<TRequest, TResponse>(Observer<TRequest, TResponse> subscriber)
+        public void Subscribe<TRequest, TResponse>(Subscriber<TRequest, TResponse> subscriber)
             where TRequest: Request<TResponse>;
 
-        public void Unsubscribe<TNotification>(Observer<TNotification> subscriber)
-            where TNotification : Notify;
+        public void Unsubscribe<TNotification>(Subscriber<TNotification> subscriber)
+            where TNotification : Notification;
 
-        public void Unsubscribe<TRequest, TResponse>(Observer<TRequest, TResponse> subscriber) 
+        public void Unsubscribe<TRequest, TResponse>(Subscriber<TRequest, TResponse> subscriber) 
             where TRequest : Request<TResponse>;
 
         public void Unsubscribe<TNotification>(Guid id)
-            where TNotification : Notify;
+            where TNotification : Notification;
 
         public void Unsubscribe<TRequest, TResponse>(Guid id)
             where TRequest : Request<TResponse>;

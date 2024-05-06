@@ -8,38 +8,49 @@ namespace MemBus
 
         private readonly Dictionary<Type, Dictionary<Guid, Tuple<object?, MethodInfo>>> _requestSubs = new();
 
-        public void Publish<TNofication>(TNofication notification) 
-            where TNofication : Notify
+        public void Notify<TNofication>(TNofication notification) 
+            where TNofication : Notification
         {
-            Type type = typeof(TNofication);
+            Type? type = typeof(TNofication);
 
-            if (_notifySubs.TryGetValue(type, out var dictionary))
+            do
             {
-                foreach (var tuple in dictionary.Values)
+                if (_notifySubs.TryGetValue(type, out var dictionary))
                 {
-                    tuple.Item2.Invoke(tuple.Item1, new object[] { notification });
+                    foreach (var tuple in dictionary.Values)
+                    {
+                        tuple.Item2.Invoke(tuple.Item1, new object[] { notification });
+                    }
                 }
-            }
+
+                type = type.BaseType;
+
+            } while (type != null);
         }
 
-        public void Publish<TRequest, TResponse>(TRequest request) 
+        public void Request<TRequest, TResponse>(TRequest request) 
             where TRequest : Request<TResponse>
         {
-            Type type = typeof(TRequest);
+            Type? type = typeof(TRequest);
 
-            if (_requestSubs.TryGetValue(type, out var dictionary))
+            do
             {
-                foreach (var tuple in dictionary.Values)
+                if (_requestSubs.TryGetValue(type, out var dictionary))
                 {
-                    TResponse? response = (TResponse?)tuple.Item2.Invoke(tuple.Item1, new object[] { request });
+                    foreach (var tuple in dictionary.Values)
+                    {
+                        TResponse? response = (TResponse?)tuple.Item2.Invoke(tuple.Item1, new object[] { request });
 
-                    request.Respond(response);
+                        request.Respond(response);
+                    }
                 }
-            }
+
+                type = type.BaseType;
+            } while (type != null);
         }
 
-        public void Subscribe<TNotification>(Observer<TNotification> subscriber) 
-            where TNotification : Notify
+        public void Subscribe<TNotification>(Subscriber<TNotification> subscriber) 
+            where TNotification : Notification
         {
             Type type = typeof(TNotification);
 
@@ -56,7 +67,7 @@ namespace MemBus
             }
         }
 
-        public void Subscribe<TRequest, TResponse>(Observer<TRequest, TResponse> subscriber) 
+        public void Subscribe<TRequest, TResponse>(Subscriber<TRequest, TResponse> subscriber) 
             where TRequest : Request<TResponse>
         {
             Type type = typeof(TRequest);
@@ -74,8 +85,8 @@ namespace MemBus
             }
         }
 
-        public void Unsubscribe<TNotification>(Observer<TNotification> subscriber) 
-            where TNotification : Notify
+        public void Unsubscribe<TNotification>(Subscriber<TNotification> subscriber) 
+            where TNotification : Notification
         {
             Type type = typeof(TNotification);
 
@@ -85,7 +96,7 @@ namespace MemBus
             }
         }
 
-        public void Unsubscribe<TRequest, TResponse>(Observer<TRequest, TResponse> subscriber) 
+        public void Unsubscribe<TRequest, TResponse>(Subscriber<TRequest, TResponse> subscriber) 
             where TRequest : Request<TResponse>
         {
             Type type = typeof(TRequest);
@@ -97,7 +108,7 @@ namespace MemBus
         }
 
         public void Unsubscribe<TNotification>(Guid id)
-            where TNotification : Notify
+            where TNotification : Notification
         {
             if (_notifySubs.TryGetValue(typeof(TNotification), out var dictionary))
             {

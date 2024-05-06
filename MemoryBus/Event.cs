@@ -1,6 +1,6 @@
 ﻿namespace MemBus
 {
-    public abstract class Notify : IEvent
+    public abstract class Notification : IEvent
     {
         public abstract string Name { get; }
 

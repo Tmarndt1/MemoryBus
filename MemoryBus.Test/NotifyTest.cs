@@ -2,7 +2,7 @@
 
 namespace EventBus.Test
 {
-    public class NotifyTest : Notify
+    public class NotifyTest : Notification
     {
         public override string Name => throw new NotImplementedException();
 
