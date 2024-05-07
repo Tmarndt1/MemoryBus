@@ -2,11 +2,15 @@
 {
     public interface IMemoryBus
     {
-        public void Notify<TNofication>(TNofication notification)
+        public void Publish<TNofication>(TNofication notification)
             where TNofication : Notification;
 
-        public void Request<TRequest, TResponse>(TRequest request)
-            where TRequest : Request<TResponse>;
+        public void Publish<TResponse>(Request<TResponse> request);
+
+        public Task PublishAsync<TNofication>(TNofication notification, CancellationToken token = default)
+            where TNofication : Notification;
+
+        public Task PublishAsync<TResponse>(Request<TResponse> request, CancellationToken token = default);
 
         public void Subscribe<TNofication>(Subscriber<TNofication> subscriber)
             where TNofication : Notification;

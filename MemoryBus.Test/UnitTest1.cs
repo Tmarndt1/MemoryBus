@@ -1,5 +1,3 @@
-using EventBus.Test;
-
 namespace MemBus.Test
 {
     public class UnitTest1
@@ -17,7 +15,7 @@ namespace MemBus.Test
                 hit = true;
             }));
 
-            eb.Notify(new NotifyTest());
+            eb.Publish(new NotifyTest());
 
             Assert.True(hit);
         }
@@ -38,7 +36,7 @@ namespace MemBus.Test
 
             eb.Unsubscribe(subscriber);
 
-            eb.Notify(new NotifyTest());
+            eb.Publish(new NotifyTest());
 
             Assert.False(hit);
         }
@@ -53,12 +51,12 @@ namespace MemBus.Test
 
             eb.Subscribe(new Subscriber<RequestTest, bool>(ev =>
             {
-                return true;
+                return new Response<bool>(this, true);
             }));
 
-            eb.Request<RequestTest, bool>(new RequestTest((bool success) =>
+            eb.Publish(new RequestTest((response) =>
             {
-                hit = success;
+                hit = response.Value;
             }));
 
             Assert.True(hit);
@@ -74,14 +72,14 @@ namespace MemBus.Test
 
             var subscriber = new Subscriber<RequestTest, bool>(ev =>
             {
-                return true;
+                return new Response<bool>(this, true);
             });
 
             eb.Subscribe(subscriber);
 
             eb.Unsubscribe(subscriber);
 
-            eb.Request<RequestTest, bool>(new RequestTest((bool success) =>
+            eb.Publish(new RequestTest((response) =>
             {
                 hit = true;
             }));
@@ -99,10 +97,10 @@ namespace MemBus.Test
 
             eb.Subscribe(new Subscriber<Request<bool>, bool>(ev =>
             {
-                return true;
+                return new Response<bool>(this, true);
             }));
 
-            eb.Request<RequestTest, bool>(new RequestTest((bool success) =>
+            eb.Publish(new RequestTest((response) =>
             {
                 hit = true;
             }));
@@ -120,19 +118,40 @@ namespace MemBus.Test
 
             var subscriber = new Subscriber<Request<bool>, bool>(ev =>
             {
-                return true;
+                return new Response<bool>(this, true);
             });
 
             eb.Subscribe(subscriber);
 
             eb.Unsubscribe(subscriber);
 
-            eb.Request<RequestTest, bool>(new RequestTest((bool success) =>
+            eb.Publish(new RequestTest((response) =>
+            {
+                hit = response.Value;
+            }));
+
+            Assert.False(hit);
+        }
+
+        [Fact]
+        public async Task Async_Test()
+        {
+            // Arrange
+            MemoryBus eb = new MemoryBus();
+
+            bool hit = false;
+
+            eb.Subscribe(new Subscriber<RequestTest, bool>(ev =>
+            {
+                return new Response<bool>(this, true);
+            }));
+
+            await eb.PublishAsync(new RequestTest((response) =>
             {
                 hit = true;
             }));
 
-            Assert.False(hit);
+            Assert.True(hit);
         }
     }
 }

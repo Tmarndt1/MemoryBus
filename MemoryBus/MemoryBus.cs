@@ -1,14 +1,13 @@
-﻿using System.Reflection;
-
+﻿
 namespace MemBus
 {
     public class MemoryBus : IMemoryBus
     {
-        private readonly Dictionary<Type, Dictionary<Guid, Tuple<object?, MethodInfo>>> _notifySubs = new();
+        private readonly Dictionary<Type, Dictionary<Guid, Delegate>> _notifySubs = new();
 
-        private readonly Dictionary<Type, Dictionary<Guid, Tuple<object?, MethodInfo>>> _requestSubs = new();
+        private readonly Dictionary<Type, Dictionary<Guid, Delegate>> _requestSubs = new();
 
-        public void Notify<TNofication>(TNofication notification) 
+        public void Publish<TNofication>(TNofication notification) 
             where TNofication : Notification
         {
             Type? type = typeof(TNofication);
@@ -17,9 +16,9 @@ namespace MemBus
             {
                 if (_notifySubs.TryGetValue(type, out var dictionary))
                 {
-                    foreach (var tuple in dictionary.Values)
+                    foreach (var @delegate in dictionary.Values)
                     {
-                        tuple.Item2.Invoke(tuple.Item1, new object[] { notification });
+                        @delegate.Method.Invoke(@delegate.Target, new object[] { notification });
                     }
                 }
 
@@ -28,18 +27,17 @@ namespace MemBus
             } while (type != null);
         }
 
-        public void Request<TRequest, TResponse>(TRequest request) 
-            where TRequest : Request<TResponse>
+        public void Publish<TResponse>(Request<TResponse> request) 
         {
-            Type? type = typeof(TRequest);
+            Type? type = request.GetType();
 
             do
             {
                 if (_requestSubs.TryGetValue(type, out var dictionary))
                 {
-                    foreach (var tuple in dictionary.Values)
+                    foreach (var @delegate in dictionary.Values)
                     {
-                        TResponse? response = (TResponse?)tuple.Item2.Invoke(tuple.Item1, new object[] { request });
+                        Response<TResponse>? response = (Response<TResponse>?)@delegate.Method.Invoke(@delegate.Target, new object[] { request });
 
                         request.Respond(response);
                     }
@@ -49,6 +47,16 @@ namespace MemBus
             } while (type != null);
         }
 
+        public Task PublishAsync<TNofication>(TNofication notification, CancellationToken token = default) where TNofication : Notification
+        {
+            return Task.Run(() => Publish(notification), token);
+        }
+
+        public Task PublishAsync<TResponse>(Request<TResponse> request, CancellationToken token = default)
+        {
+            return Task.Run(() => Publish(request), token);
+        }
+
         public void Subscribe<TNotification>(Subscriber<TNotification> subscriber) 
             where TNotification : Notification
         {
@@ -56,13 +64,13 @@ namespace MemBus
 
             if (_notifySubs.TryGetValue(type, out var dictionary))
             {
-                dictionary.Add(subscriber.Id, new Tuple<object?, MethodInfo>(subscriber.Handler.Target, subscriber.Handler.Method));
+                dictionary.Add(subscriber.Id, subscriber.Delegate);
             }
             else
             {
-                _notifySubs.Add(type, new Dictionary<Guid, Tuple<object?, MethodInfo>>()
+                _notifySubs.Add(type, new Dictionary<Guid, Delegate>()
                 {
-                    { subscriber.Id, new Tuple<object?, MethodInfo>(subscriber.Handler.Target, subscriber.Handler.Method) }
+                    { subscriber.Id, subscriber.Delegate }
                 });
             }
         }
@@ -74,13 +82,13 @@ namespace MemBus
 
             if (_requestSubs.TryGetValue(type, out var dictionary))
             {
-                dictionary.Add(subscriber.Id, new Tuple<object?, MethodInfo>(subscriber.Handler.Target, subscriber.Handler.Method));
+                dictionary.Add(subscriber.Id, subscriber.Delegate);
             }
             else
             {
-                _requestSubs.Add(type, new Dictionary<Guid, Tuple<object?, MethodInfo>>()
+                _requestSubs.Add(type, new Dictionary<Guid, Delegate>()
                 {
-                    { subscriber.Id, new Tuple<object?, MethodInfo>(subscriber.Handler.Target, subscriber.Handler.Method) }
+                    { subscriber.Id, subscriber.Delegate }
                 });
             }
         }

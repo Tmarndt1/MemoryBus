@@ -1,30 +1,24 @@
 ﻿namespace MemBus
 {
-    public abstract class Notification : IEvent
-    {
-        public abstract string Name { get; }
-
-        public abstract object Sender { get; }
-    }
-
-    public abstract class Request<TResponse> : IEvent
+    public abstract class Request<TValue>
     {
         public abstract string Name { get; }
 
         public abstract object Sender { get; }
 
-        private readonly Action<TResponse?> _callback;
+
+        private readonly Action<Response<TValue>> _callback;
 
         /// <summary>
         /// Request constructor that requires a callback.
         /// </summary>
         /// <param name="callback"></param>
-        protected Request(Action<TResponse?> callback)
+        protected Request(Action<Response<TValue>> callback)
         {
             _callback = callback;
         }
 
-        public void Respond(TResponse? response)
+        public void Respond(Response<TValue> response)
         {
             _callback(response);
         }

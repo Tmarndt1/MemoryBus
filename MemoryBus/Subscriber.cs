@@ -13,13 +13,13 @@ namespace MemBus
     public class Subscriber<TNotification> : Subscriber, IDisposable
         where TNotification : Notification
     {
-        internal Action<TNotification> Handler;
+        internal Action<TNotification> Delegate;
 
         private bool disposedValue;
 
         public Subscriber(Action<TNotification> callback)
         {
-            Handler = callback;
+            Delegate = callback;
         }
 
         protected virtual void Dispose(bool disposing)
@@ -46,13 +46,13 @@ namespace MemBus
     public class Subscriber<TRequest, TResponse> : Subscriber, IDisposable
         where TRequest : Request<TResponse>
     {
-        internal Func<TRequest, TResponse> Handler;
+        internal Func<TRequest, Response<TResponse>> Delegate;
 
         private bool disposedValue;
 
-        public Subscriber(Func<TRequest, TResponse> callback)
+        public Subscriber(Func<TRequest, Response<TResponse>> responder)
         {
-            Handler = callback;
+            Delegate = responder;
         }
 
         protected virtual void Dispose(bool disposing)

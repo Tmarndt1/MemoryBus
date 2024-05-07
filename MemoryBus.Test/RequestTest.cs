@@ -1,6 +1,4 @@
-﻿using MemBus;
-
-namespace EventBus.Test
+﻿namespace MemBus
 {
     public class RequestTest : Request<bool>
     {
@@ -8,7 +6,7 @@ namespace EventBus.Test
 
         public override object Sender => throw new NotImplementedException();
 
-        public RequestTest(Action<bool> callback) : base(callback)
+        public RequestTest(Action<Response<bool>> callback) : base(callback)
         {
 
         }

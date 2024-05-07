@@ -1,6 +1,4 @@
-﻿using MemBus;
-
-namespace EventBus.Test
+﻿namespace MemBus
 {
     public class NotifyTest : Notification
     {
