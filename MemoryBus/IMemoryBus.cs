@@ -1,4 +1,6 @@
-﻿namespace MemBus
+﻿using System.Runtime.CompilerServices;
+
+namespace MemBus
 {
     public interface IMemoryBus
     {

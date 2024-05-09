@@ -1,24 +1,38 @@
 ﻿namespace MemBus
 {
-    public abstract class Request<TValue>
+    /// <summary>
+    /// Represents a request to publish on the memory bus.
+    /// </summary>
+    /// <typeparam name="TValue">The type of the value anticipated in the response(s).</typeparam>
+    public class Request<TValue>
     {
-        public abstract string Name { get; }
+        /// <summary>
+        /// The name of the request.
+        /// </summary>
+        public readonly string Name;
 
-        public abstract object Sender { get; }
-
+        /// <summary>
+        /// The sender of the request.
+        /// </summary>
+        public readonly object Sender;
 
         private readonly Action<Response<TValue>> _callback;
 
         /// <summary>
-        /// Request constructor that requires a callback.
+        /// Constructor that sets the sender, name, and callback of the request.
         /// </summary>
-        /// <param name="callback"></param>
-        protected Request(Action<Response<TValue>> callback)
+        /// <param name="sender">The sender of the request.</param>
+        /// <param name="name">The name of the request.</param>
+        /// <param name="callback">The callback capture the response from reciever.</param>
+        public Request(object sender, string name, Action<Response<TValue>> callback)
         {
+            Sender = sender;
+            Name = name;
+
             _callback = callback;
         }
 
-        public void Respond(Response<TValue> response)
+        internal void Respond(Response<TValue> response)
         {
             _callback(response);
         }

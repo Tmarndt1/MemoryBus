@@ -10,12 +10,12 @@ namespace MemBus.Test
 
             var hit = false;
 
-            eb.Subscribe(new Subscriber<NotifyTest>(ev =>
+            eb.Subscribe(new Subscriber<Notification>(ev =>
             {
                 hit = true;
             }));
 
-            eb.Publish(new NotifyTest());
+            eb.Publish(new Notification(this, "notification"));
 
             Assert.True(hit);
         }
@@ -27,7 +27,7 @@ namespace MemBus.Test
 
             bool hit = false;
 
-            var subscriber = new Subscriber<NotifyTest>(ev =>
+            var subscriber = new Subscriber<Notification>(ev =>
             {
                 hit = true;
             });
@@ -36,7 +36,7 @@ namespace MemBus.Test
 
             eb.Unsubscribe(subscriber);
 
-            eb.Publish(new NotifyTest());
+            eb.Publish(new Notification(this, "notification"));
 
             Assert.False(hit);
         }
@@ -49,12 +49,12 @@ namespace MemBus.Test
 
             bool hit = false;
 
-            eb.Subscribe(new Subscriber<RequestTest, bool>(ev =>
+            eb.Subscribe(new Subscriber<Request<bool>, bool>(ev =>
             {
                 return new Response<bool>(this, true);
             }));
 
-            eb.Publish(new RequestTest((response) =>
+            eb.Publish(new Request<bool>(this, "request", (response) =>
             {
                 hit = response.Value;
             }));
@@ -70,7 +70,7 @@ namespace MemBus.Test
 
             bool hit = false;
 
-            var subscriber = new Subscriber<RequestTest, bool>(ev =>
+            var subscriber = new Subscriber<Request<bool>, bool>(ev =>
             {
                 return new Response<bool>(this, true);
             });
@@ -79,7 +79,7 @@ namespace MemBus.Test
 
             eb.Unsubscribe(subscriber);
 
-            eb.Publish(new RequestTest((response) =>
+            eb.Publish(new Request<bool>(this, "request", (response) =>
             {
                 hit = true;
             }));
@@ -100,7 +100,7 @@ namespace MemBus.Test
                 return new Response<bool>(this, true);
             }));
 
-            eb.Publish(new RequestTest((response) =>
+            eb.Publish(new Request<bool>(this, "request", (response) =>
             {
                 hit = true;
             }));
@@ -125,7 +125,7 @@ namespace MemBus.Test
 
             eb.Unsubscribe(subscriber);
 
-            eb.Publish(new RequestTest((response) =>
+            eb.Publish(new Request<bool>(this, "request", (response) =>
             {
                 hit = response.Value;
             }));
@@ -141,12 +141,12 @@ namespace MemBus.Test
 
             bool hit = false;
 
-            eb.Subscribe(new Subscriber<RequestTest, bool>(ev =>
+            eb.Subscribe(new Subscriber<Request<bool>, bool>(ev =>
             {
                 return new Response<bool>(this, true);
             }));
 
-            await eb.PublishAsync(new RequestTest((response) =>
+            await eb.PublishAsync(new Request<bool>(this, "request", (response) =>
             {
                 hit = true;
             }));
