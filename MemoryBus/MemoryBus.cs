@@ -1,136 +1,357 @@
-﻿using System.Diagnostics;
-
 namespace MemBus
 {
+    /// <summary>
+    /// Default in-memory implementation of <see cref="IMemoryBus"/>.
+    /// </summary>
     public class MemoryBus : IMemoryBus
     {
-        private readonly Dictionary<Type, Dictionary<Guid, Delegate>> _notifySubs = new();
+        private readonly object _sync = new();
 
-        private readonly Dictionary<Type, Dictionary<Guid, Delegate>> _requestSubs = new();
+        private readonly Dictionary<Type, Dictionary<Guid, Func<Notification, CancellationToken, Task>>> _notificationSubscribers = new();
 
-        public void Publish<TNofication>(TNofication notification) 
-            where TNofication : Notification
-        {
-            Type? type = typeof(TNofication);
+        private readonly Dictionary<Type, Dictionary<Guid, Func<object, CancellationToken, Task<object>>>> _requestSubscribers = new();
 
-            do
-            {
-                if (_notifySubs.TryGetValue(type, out var dictionary))
-                {
-                    foreach (var @delegate in dictionary.Values)
-                    {
-                        @delegate.Method.Invoke(@delegate.Target, new object[] { notification });
-                    }
-                }
-
-                type = type.BaseType;
-
-            } while (type != null);
-        }
-
-        public void Publish<TResponse>(Request<TResponse> request) 
-        {
-            Type? type = request.GetType();
-
-            do
-            {
-                if (_requestSubs.TryGetValue(type, out var dictionary))
-                {
-                    foreach (var @delegate in dictionary.Values)
-                    {
-                        Response<TResponse>? response = (Response<TResponse>?)@delegate.Method.Invoke(@delegate.Target, new object[] { request });
-
-                        request.Respond(response);
-                    }
-                }
-
-                type = type.BaseType;
-            } while (type != null);
-        }
-
-        public Task PublishAsync<TNofication>(TNofication notification, CancellationToken token = default) where TNofication : Notification
-        {
-            return Task.Run(() => Publish(notification), token);
-        }
-
-        public Task PublishAsync<TResponse>(Request<TResponse> request, CancellationToken token = default)
-        {
-            return Task.Run(() => Publish(request), token);
-        }
-
-        public void Subscribe<TNotification>(Subscriber<TNotification> subscriber) 
+        /// <inheritdoc />
+        public void Publish<TNotification>(TNotification notification)
             where TNotification : Notification
         {
-            Type type = typeof(TNotification);
-
-            if (_notifySubs.TryGetValue(type, out var dictionary))
+            if (notification is null)
             {
-                dictionary.Add(subscriber.Id, subscriber.Delegate);
+                throw new ArgumentNullException(nameof(notification));
             }
-            else
+
+            foreach (var handler in GetNotificationHandlers(notification.GetType()))
             {
-                _notifySubs.Add(type, new Dictionary<Guid, Delegate>()
-                {
-                    { subscriber.Id, subscriber.Delegate }
-                });
+                handler(notification, CancellationToken.None).GetAwaiter().GetResult();
             }
         }
 
-        public void Subscribe<TRequest, TResponse>(Subscriber<TRequest, TResponse> subscriber) 
-            where TRequest : Request<TResponse>
+        /// <inheritdoc />
+        public void Publish<TResponse>(Request<TResponse> request)
         {
-            Type type = typeof(TRequest);
-
-            if (_requestSubs.TryGetValue(type, out var dictionary))
+            if (request is null)
             {
-                dictionary.Add(subscriber.Id, subscriber.Delegate);
+                throw new ArgumentNullException(nameof(request));
             }
-            else
+
+            foreach (var handler in GetRequestHandlers(request.GetType()))
             {
-                _requestSubs.Add(type, new Dictionary<Guid, Delegate>()
+                var result = handler(request, CancellationToken.None).GetAwaiter().GetResult();
+
+                if (result is not Response<TResponse> response)
                 {
-                    { subscriber.Id, subscriber.Delegate }
-                });
+                    throw new InvalidOperationException("Request subscriber returned an invalid response.");
+                }
+
+                request.Respond(response);
             }
         }
 
-        public void Unsubscribe<TNotification>(Subscriber<TNotification> subscriber) 
+        /// <inheritdoc />
+        public async Task PublishAsync<TNotification>(TNotification notification, CancellationToken token = default)
             where TNotification : Notification
         {
-            Type type = typeof(TNotification);
-
-            if (_notifySubs.TryGetValue(type, out var dictionary))
+            if (notification is null)
             {
-                dictionary.Remove(subscriber.Id);
+                throw new ArgumentNullException(nameof(notification));
+            }
+
+            foreach (var handler in GetNotificationHandlers(notification.GetType()))
+            {
+                token.ThrowIfCancellationRequested();
+                await handler(notification, token).ConfigureAwait(false);
             }
         }
 
-        public void Unsubscribe<TRequest, TResponse>(Subscriber<TRequest, TResponse> subscriber) 
+        /// <inheritdoc />
+        public async Task PublishAsync<TResponse>(Request<TResponse> request, CancellationToken token = default)
+        {
+            if (request is null)
+            {
+                throw new ArgumentNullException(nameof(request));
+            }
+
+            foreach (var handler in GetRequestHandlers(request.GetType()))
+            {
+                token.ThrowIfCancellationRequested();
+                var result = await handler(request, token).ConfigureAwait(false);
+
+                if (result is not Response<TResponse> response)
+                {
+                    throw new InvalidOperationException("Request subscriber returned an invalid response.");
+                }
+
+                request.Respond(response);
+            }
+        }
+
+        /// <inheritdoc />
+        public IDisposable Subscribe<TNotification>(Action<TNotification> callback)
+            where TNotification : Notification
+        {
+            return Subscribe(new Subscriber<TNotification>(callback));
+        }
+
+        /// <inheritdoc />
+        public IDisposable SubscribeAsync<TNotification>(Func<TNotification, CancellationToken, Task> callback)
+            where TNotification : Notification
+        {
+            return Subscribe(new AsyncSubscriber<TNotification>(callback));
+        }
+
+        /// <inheritdoc />
+        public IDisposable Subscribe<TNotification>(Subscriber<TNotification> subscriber)
+            where TNotification : Notification
+        {
+            if (subscriber is null)
+            {
+                throw new ArgumentNullException(nameof(subscriber));
+            }
+
+            Func<Notification, CancellationToken, Task> handler = (notification, _) =>
+            {
+                subscriber.Callback((TNotification)notification);
+                return Task.CompletedTask;
+            };
+
+            return AddNotificationSubscription(typeof(TNotification), subscriber, handler);
+        }
+
+        /// <summary>
+        /// Registers an asynchronous notification subscriber instance.
+        /// </summary>
+        /// <typeparam name="TNotification">The notification type to receive.</typeparam>
+        /// <param name="subscriber">The subscriber to register.</param>
+        /// <returns>A subscription token that unregisters the subscriber when disposed.</returns>
+        public IDisposable Subscribe<TNotification>(AsyncSubscriber<TNotification> subscriber)
+            where TNotification : Notification
+        {
+            if (subscriber is null)
+            {
+                throw new ArgumentNullException(nameof(subscriber));
+            }
+
+            Func<Notification, CancellationToken, Task> handler =
+                (notification, token) => subscriber.Callback((TNotification)notification, token);
+
+            return AddNotificationSubscription(typeof(TNotification), subscriber, handler);
+        }
+
+        /// <inheritdoc />
+        public IDisposable Subscribe<TRequest, TResponse>(Func<TRequest, Response<TResponse>> responder)
             where TRequest : Request<TResponse>
         {
-            Type type = typeof(TRequest);
-
-            if (_requestSubs.TryGetValue(type, out var dictionary))
-            {
-                dictionary.Remove(subscriber.Id);
-            }
+            return Subscribe(new Subscriber<TRequest, TResponse>(responder));
         }
 
+        /// <inheritdoc />
+        public IDisposable SubscribeAsync<TRequest, TResponse>(Func<TRequest, CancellationToken, Task<Response<TResponse>>> responder)
+            where TRequest : Request<TResponse>
+        {
+            return Subscribe(new AsyncSubscriber<TRequest, TResponse>(responder));
+        }
+
+        /// <inheritdoc />
+        public IDisposable Subscribe<TRequest, TResponse>(Subscriber<TRequest, TResponse> subscriber)
+            where TRequest : Request<TResponse>
+        {
+            if (subscriber is null)
+            {
+                throw new ArgumentNullException(nameof(subscriber));
+            }
+
+            Func<object, CancellationToken, Task<object>> handler = (request, _) =>
+            {
+                Response<TResponse> response = subscriber.Responder((TRequest)request);
+                return Task.FromResult<object>(response);
+            };
+
+            return AddRequestSubscription(typeof(TRequest), subscriber, handler);
+        }
+
+        /// <summary>
+        /// Registers an asynchronous request subscriber instance.
+        /// </summary>
+        /// <typeparam name="TRequest">The request type to receive.</typeparam>
+        /// <typeparam name="TResponse">The response value type.</typeparam>
+        /// <param name="subscriber">The subscriber to register.</param>
+        /// <returns>A subscription token that unregisters the subscriber when disposed.</returns>
+        public IDisposable Subscribe<TRequest, TResponse>(AsyncSubscriber<TRequest, TResponse> subscriber)
+            where TRequest : Request<TResponse>
+        {
+            if (subscriber is null)
+            {
+                throw new ArgumentNullException(nameof(subscriber));
+            }
+
+            async Task<object> Handler(object request, CancellationToken token)
+            {
+                return await subscriber.Responder((TRequest)request, token).ConfigureAwait(false);
+            }
+
+            return AddRequestSubscription(typeof(TRequest), subscriber, Handler);
+        }
+
+        /// <inheritdoc />
+        public void Unsubscribe<TNotification>(Subscriber<TNotification> subscriber)
+            where TNotification : Notification
+        {
+            if (subscriber is null)
+            {
+                throw new ArgumentNullException(nameof(subscriber));
+            }
+
+            Unsubscribe<TNotification>(subscriber.Id);
+        }
+
+        /// <inheritdoc />
+        public void Unsubscribe<TRequest, TResponse>(Subscriber<TRequest, TResponse> subscriber)
+            where TRequest : Request<TResponse>
+        {
+            if (subscriber is null)
+            {
+                throw new ArgumentNullException(nameof(subscriber));
+            }
+
+            Unsubscribe<TRequest, TResponse>(subscriber.Id);
+        }
+
+        /// <inheritdoc />
         public void Unsubscribe<TNotification>(Guid id)
             where TNotification : Notification
         {
-            if (_notifySubs.TryGetValue(typeof(TNotification), out var dictionary))
+            lock (_sync)
             {
-                dictionary.Remove(id);
+                RemoveSubscription(_notificationSubscribers, typeof(TNotification), id);
             }
         }
 
+        /// <inheritdoc />
         public void Unsubscribe<TRequest, TResponse>(Guid id)
             where TRequest : Request<TResponse>
         {
-            if (_requestSubs.TryGetValue(typeof(TRequest), out var dictionary))
+            lock (_sync)
             {
-                dictionary.Remove(id);
+                RemoveSubscription(_requestSubscribers, typeof(TRequest), id);
+            }
+        }
+
+        private IDisposable AddNotificationSubscription(
+            Type type,
+            Subscriber subscriber,
+            Func<Notification, CancellationToken, Task> handler)
+        {
+            return AddSubscription(_notificationSubscribers, type, subscriber, handler);
+        }
+
+        private IDisposable AddRequestSubscription(
+            Type type,
+            Subscriber subscriber,
+            Func<object, CancellationToken, Task<object>> handler)
+        {
+            return AddSubscription(_requestSubscribers, type, subscriber, handler);
+        }
+
+        private IDisposable AddSubscription<THandler>(
+            Dictionary<Type, Dictionary<Guid, THandler>> subscriptions,
+            Type type,
+            Subscriber subscriber,
+            THandler handler)
+        {
+            lock (_sync)
+            {
+                if (!subscriptions.TryGetValue(type, out var subscribers))
+                {
+                    subscribers = new Dictionary<Guid, THandler>();
+                    subscriptions.Add(type, subscribers);
+                }
+
+                subscribers.Add(subscriber.Id, handler);
+
+                var subscription = new Subscription(() =>
+                {
+                    lock (_sync)
+                    {
+                        RemoveSubscription(subscriptions, type, subscriber.Id);
+                    }
+                });
+
+                subscriber.AddDisposeAction(subscription.Dispose);
+
+                return subscription;
+            }
+        }
+
+        private Func<Notification, CancellationToken, Task>[] GetNotificationHandlers(Type type)
+        {
+            lock (_sync)
+            {
+                return GetHandlers(_notificationSubscribers, type);
+            }
+        }
+
+        private Func<object, CancellationToken, Task<object>>[] GetRequestHandlers(Type type)
+        {
+            lock (_sync)
+            {
+                return GetHandlers(_requestSubscribers, type);
+            }
+        }
+
+        private static THandler[] GetHandlers<THandler>(
+            Dictionary<Type, Dictionary<Guid, THandler>> subscriptions,
+            Type type)
+        {
+            var handlers = new List<THandler>();
+            Type? currentType = type;
+
+            do
+            {
+                if (subscriptions.TryGetValue(currentType, out var subscribers))
+                {
+                    handlers.AddRange(subscribers.Values);
+                }
+
+                currentType = currentType.BaseType;
+            } while (currentType != null);
+
+            return handlers.ToArray();
+        }
+
+        private static void RemoveSubscription<THandler>(
+            Dictionary<Type, Dictionary<Guid, THandler>> subscriptions,
+            Type type,
+            Guid id)
+        {
+            if (!subscriptions.TryGetValue(type, out var subscribers))
+            {
+                return;
+            }
+
+            subscribers.Remove(id);
+
+            if (subscribers.Count == 0)
+            {
+                subscriptions.Remove(type);
+            }
+        }
+
+        private sealed class Subscription : IDisposable
+        {
+            private readonly Action _dispose;
+            private int _isDisposed;
+
+            public Subscription(Action dispose)
+            {
+                _dispose = dispose;
+            }
+
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref _isDisposed, 1) == 0)
+                {
+                    _dispose();
+                }
             }
         }
     }

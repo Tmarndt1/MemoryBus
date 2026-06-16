@@ -8,22 +8,22 @@
         /// <summary>
         /// The name of the notification.
         /// </summary>
-        public readonly string Name;
+        public string Name { get; }
 
         /// <summary>
         /// The sender of the notification.
         /// </summary>
-        public readonly object Sender;
+        public object Sender { get; }
 
         /// <summary>
-        /// Constructor that sets the sender and name of the notification.
+        /// Creates a notification with the supplied sender and name.
         /// </summary>
         /// <param name="sender">The sender of the notification.</param>
         /// <param name="name">The name of the notification.</param>
         public Notification(object sender, string name)
         {
-            Sender = sender;
-            Name = name;
+            Sender = sender ?? throw new ArgumentNullException(nameof(sender));
+            Name = name ?? throw new ArgumentNullException(nameof(name));
         }
     }
 }

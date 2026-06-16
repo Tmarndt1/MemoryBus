@@ -3,58 +3,133 @@ namespace MemBus.Test
     public class UnitTest1
     {
         [Fact]
-        public void Notify_Publish_Test()
+        public void Publish_Notifies_Subscriber()
         {
-            // Arrange
-            var eb = new MemoryBus();
-
+            var bus = new MemoryBus();
             var hit = false;
 
-            eb.Subscribe(new Subscriber<Notification>(ev =>
+            bus.Subscribe<Notification>(notification =>
             {
                 hit = true;
-            }));
+            });
 
-            eb.Publish(new Notification(this, "notification"));
+            bus.Publish(new Notification(this, "notification"));
 
             Assert.True(hit);
         }
 
         [Fact]
-        public void Notify_Unsubscribe_Test()
+        public void Subscription_Dispose_Unsubscribes()
         {
-            MemoryBus eb = new MemoryBus();
+            var bus = new MemoryBus();
+            var hit = false;
 
-            bool hit = false;
-
-            var subscriber = new Subscriber<Notification>(ev =>
+            var subscription = bus.Subscribe<Notification>(notification =>
             {
                 hit = true;
             });
 
-            eb.Subscribe(subscriber);
+            subscription.Dispose();
 
-            eb.Unsubscribe(subscriber);
-
-            eb.Publish(new Notification(this, "notification"));
+            bus.Publish(new Notification(this, "notification"));
 
             Assert.False(hit);
         }
 
         [Fact]
-        public void Request_Publish()
+        public void Subscriber_Dispose_Unsubscribes()
         {
-            // Arrange
-            MemoryBus eb = new MemoryBus();
+            var bus = new MemoryBus();
+            var hit = false;
+            var subscriber = new Subscriber<Notification>(notification =>
+            {
+                hit = true;
+            });
 
-            bool hit = false;
+            bus.Subscribe(subscriber);
 
-            eb.Subscribe(new Subscriber<Request<bool>, bool>(ev =>
+            subscriber.Dispose();
+
+            bus.Publish(new Notification(this, "notification"));
+
+            Assert.False(hit);
+        }
+
+        [Fact]
+        public void Unsubscribe_By_Id_Removes_Subscriber()
+        {
+            var bus = new MemoryBus();
+            var hit = false;
+            var subscriber = new Subscriber<Notification>(notification =>
+            {
+                hit = true;
+            });
+
+            bus.Subscribe(subscriber);
+            bus.Unsubscribe<Notification>(subscriber.Id);
+
+            bus.Publish(new Notification(this, "notification"));
+
+            Assert.False(hit);
+        }
+
+        [Fact]
+        public void Publish_Allows_Unsubscribe_During_Callback()
+        {
+            var bus = new MemoryBus();
+            var hitCount = 0;
+            Subscriber<Notification>? subscriber = null;
+
+            subscriber = new Subscriber<Notification>(notification =>
+            {
+                hitCount++;
+                bus.Unsubscribe(subscriber!);
+            });
+
+            bus.Subscribe(subscriber);
+
+            bus.Publish(new Notification(this, "notification"));
+            bus.Publish(new Notification(this, "notification"));
+
+            Assert.Equal(1, hitCount);
+        }
+
+        [Fact]
+        public void Publish_Derived_Notification_Reaches_Base_Subscriber()
+        {
+            var bus = new MemoryBus();
+            var hit = false;
+
+            bus.Subscribe<Notification>(notification =>
+            {
+                hit = true;
+            });
+
+            bus.Publish(new DerivedNotification(this, "notification"));
+
+            Assert.True(hit);
+        }
+
+        [Fact]
+        public void Publish_With_No_Subscribers_Does_Not_Throw()
+        {
+            var bus = new MemoryBus();
+
+            bus.Publish(new Notification(this, "notification"));
+        }
+
+        [Fact]
+        public void Publish_Request_Calls_Response_Callback()
+        {
+            var bus = new MemoryBus();
+            var hit = false;
+
+            bus.Subscribe<Request<bool>, bool>(request =>
             {
                 return new Response<bool>(this, true);
-            }));
+            });
 
-            eb.Publish(new Request<bool>(this, "request", (response) =>
+            bus.Publish(new Request<bool>(this, "request", response =>
             {
                 hit = response.Value;
             }));
@@ -63,23 +138,37 @@ namespace MemBus.Test
         }
 
         [Fact]
-        public void Request_Unsubscribe()
+        public void Publish_Request_Can_Receive_Multiple_Responses()
         {
-            // Arrange
-            MemoryBus eb = new MemoryBus();
+            var bus = new MemoryBus();
+            var responses = new List<int>();
 
-            bool hit = false;
+            bus.Subscribe<Request<int>, int>(request => new Response<int>(this, 1));
+            bus.Subscribe<Request<int>, int>(request => new Response<int>(this, 2));
 
-            var subscriber = new Subscriber<Request<bool>, bool>(ev =>
+            bus.Publish(new Request<int>(this, "request", response =>
+            {
+                responses.Add(response.Value);
+            }));
+
+            Assert.Equal(new[] { 1, 2 }, responses);
+        }
+
+        [Fact]
+        public void Request_Unsubscribe_Removes_Responder()
+        {
+            var bus = new MemoryBus();
+            var hit = false;
+            var subscriber = new Subscriber<Request<bool>, bool>(request =>
             {
                 return new Response<bool>(this, true);
             });
 
-            eb.Subscribe(subscriber);
+            bus.Subscribe(subscriber);
 
-            eb.Unsubscribe(subscriber);
+            bus.Unsubscribe(subscriber);
 
-            eb.Publish(new Request<bool>(this, "request", (response) =>
+            bus.Publish(new Request<bool>(this, "request", response =>
             {
                 hit = true;
             }));
@@ -88,70 +177,74 @@ namespace MemBus.Test
         }
 
         [Fact]
-        public void Base_Request_Publish()
+        public async Task PublishAsync_Awaits_Async_Notification_Subscriber()
         {
-            // Arrange
-            MemoryBus eb = new MemoryBus();
+            var bus = new MemoryBus();
+            var hit = false;
 
-            bool hit = false;
-
-            eb.Subscribe(new Subscriber<Request<bool>, bool>(ev =>
+            bus.SubscribeAsync<Notification>(async (notification, token) =>
             {
-                return new Response<bool>(this, true);
-            }));
-
-            eb.Publish(new Request<bool>(this, "request", (response) =>
-            {
+                await Task.Delay(1, token);
                 hit = true;
-            }));
+            });
+
+            await bus.PublishAsync(new Notification(this, "notification"));
 
             Assert.True(hit);
         }
 
         [Fact]
-        public void Base_Request_Unsubscribe()
+        public async Task PublishAsync_Awaits_Async_Request_Subscriber()
         {
-            // Arrange
-            MemoryBus eb = new MemoryBus();
+            var bus = new MemoryBus();
+            var hit = false;
 
-            bool hit = false;
-
-            var subscriber = new Subscriber<Request<bool>, bool>(ev =>
+            bus.SubscribeAsync<Request<bool>, bool>(async (request, token) =>
             {
+                await Task.Delay(1, token);
                 return new Response<bool>(this, true);
             });
 
-            eb.Subscribe(subscriber);
-
-            eb.Unsubscribe(subscriber);
-
-            eb.Publish(new Request<bool>(this, "request", (response) =>
+            await bus.PublishAsync(new Request<bool>(this, "request", response =>
             {
                 hit = response.Value;
             }));
 
-            Assert.False(hit);
+            Assert.True(hit);
         }
 
         [Fact]
-        public async Task Async_Test()
+        public async Task PublishAsync_Observes_Cancellation()
         {
-            // Arrange
-            MemoryBus eb = new MemoryBus();
+            var bus = new MemoryBus();
+            using var source = new CancellationTokenSource();
 
-            bool hit = false;
+            bus.SubscribeAsync<Notification>((notification, token) => Task.CompletedTask);
+            source.Cancel();
 
-            eb.Subscribe(new Subscriber<Request<bool>, bool>(ev =>
+            await Assert.ThrowsAsync<OperationCanceledException>(() =>
+                bus.PublishAsync(new Notification(this, "notification"), source.Token));
+        }
+
+        [Fact]
+        public void Null_Arguments_Throw()
+        {
+            var bus = new MemoryBus();
+            Request<bool>? request = null;
+
+            Assert.Throws<ArgumentNullException>(() => bus.Publish(request!));
+            Assert.Throws<ArgumentNullException>(() => bus.Subscribe<Notification>((Action<Notification>)null!));
+            Assert.Throws<ArgumentNullException>(() => new Notification(null!, "notification"));
+            Assert.Throws<ArgumentNullException>(() => new Request<bool>(this, "request", null!));
+            Assert.Throws<ArgumentNullException>(() => new Response<bool>(null!, true));
+        }
+
+        private sealed class DerivedNotification : Notification
+        {
+            public DerivedNotification(object sender, string name)
+                : base(sender, name)
             {
-                return new Response<bool>(this, true);
-            }));
-
-            await eb.PublishAsync(new Request<bool>(this, "request", (response) =>
-            {
-                hit = true;
-            }));
-
-            Assert.True(hit);
+            }
         }
     }
 }
