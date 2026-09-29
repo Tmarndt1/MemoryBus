@@ -72,3 +72,5 @@ subscription.Dispose();
 - Derived message subscribers are invoked before base message subscribers.
 - If a subscriber throws, publishing stops and the exception is propagated to the caller.
 - Subscribe and unsubscribe operations are safe while a publish is in progress.
+- A publish takes a snapshot of matching subscribers. A subscriber removed during a publish may still receive that in-flight message.
+- Synchronous publishing rejects asynchronous subscribers; use `PublishAsync` for async handlers.

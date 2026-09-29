@@ -95,6 +95,75 @@ namespace MemBus.Test
         }
 
         [Fact]
+        public void Old_Subscription_Token_Does_Not_Remove_A_New_Registration()
+        {
+            var bus = new MemoryBus();
+            var hitCount = 0;
+            var subscriber = new Subscriber<Notification>(notification => hitCount++);
+
+            var oldSubscription = bus.Subscribe(subscriber);
+            bus.Unsubscribe(subscriber);
+            var currentSubscription = bus.Subscribe(subscriber);
+
+            oldSubscription.Dispose();
+            bus.Publish(new Notification(this, "notification"));
+
+            currentSubscription.Dispose();
+            Assert.Equal(1, hitCount);
+        }
+
+        [Fact]
+        public void Registration_Order_Survives_Removal()
+        {
+            var bus = new MemoryBus();
+            var calls = new List<int>();
+
+            var first = bus.Subscribe<Notification>(notification => calls.Add(1));
+            bus.Subscribe<Notification>(notification => calls.Add(2));
+            first.Dispose();
+            bus.Subscribe<Notification>(notification => calls.Add(3));
+
+            bus.Publish(new Notification(this, "notification"));
+
+            Assert.Equal(new[] { 2, 3 }, calls);
+        }
+
+        [Fact]
+        public void Disposed_Subscriber_Cannot_Become_Registered()
+        {
+            var bus = new MemoryBus();
+            var hit = false;
+            var subscriber = new Subscriber<Notification>(notification => hit = true);
+            subscriber.Dispose();
+
+            Assert.Throws<ObjectDisposedException>(() => bus.Subscribe(subscriber));
+            bus.Publish(new Notification(this, "notification"));
+
+            Assert.False(hit);
+        }
+
+        [Fact]
+        public void Sync_Publish_Rejects_Async_Notification_Subscriber()
+        {
+            var bus = new MemoryBus();
+            bus.SubscribeAsync<Notification>((notification, token) => Task.CompletedTask);
+
+            Assert.Throws<InvalidOperationException>(() =>
+                bus.Publish(new Notification(this, "notification")));
+        }
+
+        [Fact]
+        public void Sync_Publish_Rejects_Async_Request_Subscriber()
+        {
+            var bus = new MemoryBus();
+            bus.SubscribeAsync<Request<bool>, bool>((request, token) =>
+                Task.FromResult(new Response<bool>(this, true)));
+
+            Assert.Throws<InvalidOperationException>(() =>
+                bus.Publish(new Request<bool>(this, "request", response => { })));
+        }
+
+        [Fact]
         public void Publish_Derived_Notification_Reaches_Base_Subscriber()
         {
             var bus = new MemoryBus();

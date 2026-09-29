@@ -65,6 +65,12 @@ namespace MemBus
             where TNotification : Notification;
 
         /// <summary>
+        /// Registers an asynchronous notification subscriber instance.
+        /// </summary>
+        public IDisposable Subscribe<TNotification>(AsyncSubscriber<TNotification> subscriber)
+            where TNotification : Notification;
+
+        /// <summary>
         /// Registers a synchronous request responder.
         /// </summary>
         /// <typeparam name="TRequest">The request type to receive.</typeparam>
@@ -95,11 +101,23 @@ namespace MemBus
             where TRequest : Request<TResponse>;
 
         /// <summary>
+        /// Registers an asynchronous request subscriber instance.
+        /// </summary>
+        public IDisposable Subscribe<TRequest, TResponse>(AsyncSubscriber<TRequest, TResponse> subscriber)
+            where TRequest : Request<TResponse>;
+
+        /// <summary>
         /// Removes a notification subscriber.
         /// </summary>
         /// <typeparam name="TNotification">The notification type used when the subscriber was registered.</typeparam>
         /// <param name="subscriber">The subscriber to remove.</param>
         public void Unsubscribe<TNotification>(Subscriber<TNotification> subscriber)
+            where TNotification : Notification;
+
+        /// <summary>
+        /// Removes an asynchronous notification subscriber.
+        /// </summary>
+        public void Unsubscribe<TNotification>(AsyncSubscriber<TNotification> subscriber)
             where TNotification : Notification;
 
         /// <summary>
@@ -109,6 +127,12 @@ namespace MemBus
         /// <typeparam name="TResponse">The response value type.</typeparam>
         /// <param name="subscriber">The subscriber to remove.</param>
         public void Unsubscribe<TRequest, TResponse>(Subscriber<TRequest, TResponse> subscriber)
+            where TRequest : Request<TResponse>;
+
+        /// <summary>
+        /// Removes an asynchronous request subscriber.
+        /// </summary>
+        public void Unsubscribe<TRequest, TResponse>(AsyncSubscriber<TRequest, TResponse> subscriber)
             where TRequest : Request<TResponse>;
 
         /// <summary>
